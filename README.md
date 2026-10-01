@@ -1,33 +1,97 @@
-SQL OLAP Controlling Reporting
+# SQL OLAP Controlling Reporting
 
-A tested OLAP-style star schema and reporting query set for controlling data. I built this to sharpen my skills in MS SQL Server-style OLAP structures and Power BI-adjacent reporting — the kind of star-schema design and analytical SQL that controlling teams rely on for cost-center and account-level reporting.
+A tested OLAP-style star schema and reporting query set for controlling
+data. I built this to sharpen my skills in MS SQL Server-style OLAP
+structures and Power BI-adjacent reporting — the kind of star-schema
+design and analytical SQL that controlling teams rely on for
+cost-center and account-level reporting.
 
-What's in here
-src/build_star_schema.py — builds a proper star schema: one fact table (Fact_Buchungen, 1,512 rows, grain = one row per cost-center × account × month posting) and three dimension tables (Dim_Kostenstelle, Dim_Konto, Dim_Zeit — the time dimension has a real year/quarter/month hierarchy for drill-up/drill-down), loaded into a real SQL database with primary/foreign key constraints. It uses the same underlying data-generation logic as controlling-excel-variance-analysis (same injected signals: a sustained Logistik fuel-cost overrun from April 2026, a one-off equipment-repair spike, a consistent Marketing underspend), but modeled as a proper dimensional schema instead of a flat table — this is deliberately the OLAP/dimensional-modeling side of controlling reporting, distinct from the flat Excel deliverable.
-src/olap_queries.sql — six saved SQL queries against the schema, using genuine OLAP SQL extensions: GROUP BY ROLLUP (Bereich → Kostenstelle subtotals and grand total in one query), GROUP BY CUBE (every Bereich × Quartal combination including marginal totals), GROUP BY GROUPING SETS (two different aggregation grains in one query), window functions (SUM() OVER, LAG() for year-to-date running totals and month-over-month deltas), RANK() OVER (PARTITION BY ...) for a top-N-per-quarter exception report, and a conditional-aggregation YoY pivot.
-src/run_queries.py — executes every query in olap_queries.sql live against the built database and prints the results.
-Why DuckDB
+## What's in here
 
-I built this against DuckDB rather than a literal Microsoft SQL Server instance — standing up a full SQL Server install wasn't practical for a self-contained portfolio project. DuckDB is a real, embedded SQL engine, not a mock or a pandas DataFrame dressed up as SQL, and the queries in olap_queries.sql use T-SQL-compatible syntax (GROUP BY ROLLUP/CUBE/GROUPING SETS, OVER (PARTITION BY ... ORDER BY ...), RANK(), LAG()) — the same constructs you'd write against SQL Server or SQL Server Analysis Services for OLAP-style reporting. The engine underneath differs, and there's no real Analysis-Services multidimensional/tabular cube object here — but the schema design (star schema, surrogate keys, dimension hierarchies) and the query patterns are the transferable skill, and that part carries over directly to SQL Server work. I took the same approach in spark-multisource-etl (plain Parquet instead of Delta Lake) and powerbi-dax-semantic-model (built and verified outside Power BI Desktop itself).
+- `src/build_star_schema.py` — builds a proper star schema: one fact
+  table (`Fact_Buchungen`, 1,512 rows, grain = one row per cost-center ×
+  account × month posting) and three dimension tables
+  (`Dim_Kostenstelle`, `Dim_Konto`, `Dim_Zeit` — the time dimension has
+  a real year/quarter/month hierarchy for drill-up/drill-down), loaded
+  into a real SQL database with primary/foreign key constraints. It
+  uses the same underlying data-generation logic as
+  `controlling-excel-variance-analysis` (same injected signals: a
+  sustained Logistik fuel-cost overrun from April 2026, a one-off
+  equipment-repair spike, a consistent Marketing underspend), but
+  modeled as a proper dimensional schema instead of a flat table —
+  this is deliberately the OLAP/dimensional-modeling side of
+  controlling reporting, distinct from the flat Excel deliverable.
+- `src/olap_queries.sql` — six saved SQL queries against the schema,
+  using genuine OLAP SQL extensions: `GROUP BY ROLLUP` (Bereich →
+  Kostenstelle subtotals and grand total in one query), `GROUP BY CUBE`
+  (every Bereich × Quartal combination including marginal totals),
+  `GROUP BY GROUPING SETS` (two different aggregation grains in one
+  query), window functions (`SUM() OVER`, `LAG()` for year-to-date
+  running totals and month-over-month deltas), `RANK() OVER (PARTITION
+  BY ...)` for a top-N-per-quarter exception report, and a
+  conditional-aggregation YoY pivot.
+- `src/run_queries.py` — executes every query in `olap_queries.sql`
+  live against the built database and prints the results.
 
-Testing
+## Why DuckDB
 
-The test suite (tests/test_olap_queries.py, 8/8 passing) checks:
+I built this against DuckDB rather than a literal Microsoft SQL Server
+instance — standing up a full SQL Server install wasn't practical for
+a self-contained portfolio project. DuckDB is a real, embedded SQL
+engine, not a mock or a pandas DataFrame dressed up as SQL, and the
+queries in `olap_queries.sql` use **T-SQL-compatible syntax** (`GROUP
+BY ROLLUP/CUBE/GROUPING SETS`, `OVER (PARTITION BY ... ORDER BY ...)`,
+`RANK()`, `LAG()`) — the same constructs you'd write against SQL
+Server or SQL Server Analysis Services for OLAP-style reporting. The
+engine underneath differs, and there's no real Analysis-Services
+multidimensional/tabular cube object here — but the schema design
+(star schema, surrogate keys, dimension hierarchies) and the query
+patterns are the transferable skill, and that part carries over
+directly to SQL Server work. I took the same approach in
+`spark-multisource-etl` (plain Parquet instead of Delta Lake) and
+`powerbi-dax-semantic-model` (built and verified outside Power BI
+Desktop itself).
 
-Star schema row counts and referential integrity (every fact row resolves to exactly one row in each dimension — no orphaned keys).
-ROLLUP subtotals and the grand-total row match an independent pandas groupby().sum() over a flat re-join of the star schema (deliberately computed via plain SELECT * + pandas merge, not by reusing the OLAP query logic under test).
-CUBE produces the correct four grains (full cross, each marginal, and the grand total) with the right row counts.
-The window-function year-to-date total for December equals the full year's sum for that cost center — proven independently.
-RANK() OVER (PARTITION BY quartal) genuinely resets per quarter (exactly one rank-1 row per of the 8 quarters, not a global rank).
-The YoY pivot matches an independent groupby().unstack().
-The deliberately-injected Logistik fuel-cost overrun shows up as a real, sustained positive deviation specifically from April 2026 onward, and not before — proving the query surfaces genuine time-bound signal rather than an artifact of the aggregation itself.
-Notes
-Not literal Microsoft SQL Server — see the DuckDB section above. The schema design and OLAP query patterns transfer directly; the specific engine and SSAS cube tooling do not.
-All data is synthetic, generated by a seeded PRNG — not real company data.
-No live Power BI connection to this database — powerbi-dax- semantic-model (a separate project) covers the Power BI/DAX side on its own synthetic dataset; I didn't connect that project's Power BI layer to this star schema, to avoid overclaiming an integration I haven't actually run.
-Running it
-bash
+## Testing
+
+The test suite (`tests/test_olap_queries.py`, 8/8 passing) checks:
+
+- Star schema row counts and referential integrity (every fact row
+  resolves to exactly one row in each dimension — no orphaned keys).
+- `ROLLUP` subtotals and the grand-total row match an independent
+  pandas `groupby().sum()` over a flat re-join of the star schema
+  (deliberately computed via plain `SELECT *` + pandas merge, not by
+  reusing the OLAP query logic under test).
+- `CUBE` produces the correct four grains (full cross, each marginal,
+  and the grand total) with the right row counts.
+- The window-function year-to-date total for December equals the full
+  year's sum for that cost center — proven independently.
+- `RANK() OVER (PARTITION BY quartal)` genuinely resets per quarter
+  (exactly one rank-1 row per of the 8 quarters, not a global rank).
+- The YoY pivot matches an independent `groupby().unstack()`.
+- The deliberately-injected Logistik fuel-cost overrun shows up as a
+  real, sustained positive deviation specifically from April 2026
+  onward, and not before — proving the query surfaces genuine
+  time-bound signal rather than an artifact of the aggregation itself.
+
+## Notes
+
+- Not literal Microsoft SQL Server — see the DuckDB section above. The
+  schema design and OLAP query patterns transfer directly; the
+  specific engine and SSAS cube tooling do not.
+- All data is synthetic, generated by a seeded PRNG — not real
+  company data.
+- No live Power BI connection to this database — `powerbi-dax-
+  semantic-model` (a separate project) covers the Power BI/DAX side on
+  its own synthetic dataset; I didn't connect that project's Power BI
+  layer to this star schema, to avoid overclaiming an integration I
+  haven't actually run.
+
+## Running it
+
+```bash
 cd src
 python3 build_star_schema.py
 python3 run_queries.py
 cd .. && python3 -m pytest tests/ -v
+```
